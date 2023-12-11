@@ -1,0 +1,185 @@
+#!/usr/bin/env python
+
+import rospy
+from std_msgs.msg import Bool
+from geometry_msgs.msg import Point
+from geometry_msgs.msg import Twist
+from geometry_msgs.msg import TransformStamped
+import numpy as np
+import math
+import time
+
+##################################################################################
+
+BURGER_MAX_LIN_VEL = 0.22
+BURGER_MAX_ANG_VEL = 2.84
+
+R_MAX_LIN_VEL = 0.5
+R_MAX_ANG_VEL = 0.3
+
+POSX_ERR_TOLERANCE = 0.01
+POSY_ERR_TOLERANCE = 0.01
+ROTZ_ERR_TOLERANCE = 0.01
+
+K_P1 = 2.3779
+K_P2 = 1.9023 * 2
+K_D = 3.5125 * 2
+
+##################################################################################
+
+MSG01 = """
+Initializing MESS TurtleBot3 Line Following using Real-Time VICON Feedback
+
+CTRL-C to quit
+-----------------------------------------------------------------------------
+"""
+
+MSG02 = """
+Calibrating TurtleBot3
+"""
+
+MSG03 = """
+Calibration complete
+"""
+
+MSG04 = """
+Communication ended
+"""
+
+##################################################################################
+
+class stateTurtleBot3():
+    def __init__(self, Tx, Ty, Rz):
+        self.Tx = Tx
+        self.Ty = Ty
+        self.Rz = Rz
+
+class offsetTurtleBot3():
+    def __init__(self, Rz):
+        self.Rz = Rz
+
+##################################################################################
+
+def viconCallback(data):
+    viconCurr.Tx = data.transform.translation.x
+    viconCurr.Ty = data.transform.translation.y
+    viconCurr.Rz = math.atan2(2 * (data.transform.rotation.w * data.transform.rotation.z + data.transform.rotation.x * data.transform.rotation.y), data.transform.rotation.w ** 2 + data.transform.rotation.x ** 2 - data.transform.rotation.y ** 2 - data.transform.rotation.z ** 2) + offsetRz.Rz - initRz.Rz
+    while abs(viconCurr.Rz) > math.pi:
+        viconCurr.Rz -= np.sign(viconCurr.Rz) * 2 * math.pi
+
+def flagCallback(data):
+    if data.data == True:
+        rospy.is_shutdown()
+
+##################################################################################
+
+def controlTurtleBot3(uLin, uAng):
+    twist = Twist()
+
+    twist.linear.x = uLin
+    twist.linear.y = 0.0; twist.linear.z = 0.0
+    twist.angular.x = 0.0; twist.angular.y = 0.0
+    twist.angular.z = uAng
+
+    u.publish(twist)
+
+def calibrateTurtleBot3():
+
+    rospy.wait_for_message("/vicon/TurtleBot01/TurtleBot01", TransformStamped)
+
+    # Assign starting point:
+    viconP1 = Point()
+    viconP1.x = viconCurr.Tx
+    viconP1.y = viconCurr.Ty
+
+    # Translate linearly in the local x-direction for one second:
+    uLin = R_MAX_LIN_VEL * BURGER_MAX_LIN_VEL
+    uAng = 0.0
+
+    then = time.time()
+    while time.time() < then + 1:
+        controlTurtleBot3(uLin, uAng)
+
+    # Assign end point:
+    viconP2 = Point()
+    viconP2.x = viconCurr.Tx
+    viconP2.y = viconCurr.Ty
+
+    # Initial heading of TurtleBot3 in the VICON frame:
+    dx = viconP2.x - viconP1.x
+    dy = viconP2.y - viconP1.y
+    offsetRz.Rz = math.atan2(dy, dx)
+
+def transitionTurtleBot3():
+    rospy.wait_for_message("/vicon/TurtleBot01/TurtleBot01", TransformStamped)
+    viconLast = stateTurtleBot3(viconCurr.Tx, viconCurr.Ty, 0.0)
+    then = time.time(); Ty = viconCurr.Ty
+    while not rospy.is_shutdown():
+
+        #
+        now = time.time()
+        dt = now - then
+        then = now
+
+        #
+        uLin = R_MAX_LIN_VEL * BURGER_MAX_LIN_VEL
+        uAng = -viconCurr.Rz * K_P1 -viconCurr.Ty * K_P2 -(viconCurr.Ty - Ty) / dt * K_D
+        while abs(uAng) > R_MAX_ANG_VEL * BURGER_MAX_ANG_VEL:
+            uAng = -np.sign(viconCurr.Rz) * R_MAX_ANG_VEL * BURGER_MAX_ANG_VEL
+        Ty = viconCurr.Ty
+
+        #
+        controlTurtleBot3(uLin, uAng)
+        rospy.loginfo("%.4f\t%.4f\t%.4f\t%.4f",initRz.Rz,offsetRz.Rz,viconCurr.Rz,uAng)
+
+##################################################################################
+
+if __name__=="__main__":
+
+    # Initialize node:
+    rospy.init_node("turtlebot3_followline")
+
+    # Zero offsetRz of VICON object:
+    viconInit = rospy.wait_for_message("/vicon/TurtleBot01/TurtleBot01", TransformStamped)
+    initRz = offsetTurtleBot3(0.0)
+    initRz.Rz = math.atan2(2 * (viconInit.transform.rotation.w * viconInit.transform.rotation.z + viconInit.transform.rotation.x * viconInit.transform.rotation.y), viconInit.transform.rotation.w ** 2 + viconInit.transform.rotation.x ** 2 - viconInit.transform.rotation.y ** 2 - viconInit.transform.rotation.z ** 2)
+    while abs(initRz.Rz) > math.pi:
+        initRz.Rz -= np.sign(initRz.Rz) * 2 * math.pi
+
+    # Create object for VICON state:
+    viconCurr = stateTurtleBot3(0.0, 0.0, 0.0)
+    viconLast = stateTurtleBot3(0.0, 0.0, 0.0)
+    offsetRz = offsetTurtleBot3(0.0)
+
+    # Initialie publishers subscribers:
+    u = rospy.Publisher("cmd_vel", Twist, queue_size=10)
+    rospy.Subscriber("/vicon/TurtleBot01/TurtleBot01", TransformStamped, viconCallback)
+    rospy.Subscriber("/followline/flag", Bool, flagCallback)
+
+    try:
+
+        # Indicate the node is initiated:
+        print(MSG01)
+
+        # Indicate the calibration is initiated:
+        print(MSG02)
+
+        # Calibrate the TurtleBot3:
+        calibrateTurtleBot3()
+
+        # Indicate the calibration is complete:
+        print(MSG03)
+
+        # Transition TurtleBot3:
+        transitionTurtleBot3()
+
+        # Shut down node:
+        rospy.is_shutdown()
+
+    except:
+
+        # Indicate the node is shut down:
+        print(MSG04)
+
+
+
