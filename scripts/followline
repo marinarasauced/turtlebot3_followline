@@ -74,7 +74,8 @@ def viconCallback(data):
     if status.status == 1:
         globalCurr.Rz = psi
     elif status.status == 2:
-        
+        if abs(psi - globalCurr.Rz) < LHP_FILTER_TOLERANCE:
+            globalCurr.Rz - psi
 
 ##################################################################################
 
