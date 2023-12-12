@@ -124,7 +124,6 @@ def calibrateTurtleBot3():
     dx = viconP2.x - viconP1.x
     dy = viconP2.y - viconP1.y
     offsetRz.Rz = math.atan2(dy, dx)
-    status.status = 1
 
 def transitionTurtleBot3():
     rospy.wait_for_message("/vicon/TurtleBot01/TurtleBot01", TransformStamped)
