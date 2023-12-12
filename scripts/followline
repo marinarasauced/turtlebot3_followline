@@ -20,7 +20,7 @@ R_MAX_ANG_VEL = 0.3
 POSX_ERR_TOLERANCE = 0.01
 POSY_ERR_TOLERANCE = 0.01
 ROTZ_ERR_TOLERANCE = 0.01
-LHP_FILTER_TOLERANCE = 0.5
+LHP_FILTER_TOLERANCE = 0.2
 
 K_P1 = 2.3779
 K_P2 = 3.8046
@@ -58,24 +58,34 @@ class offsetTurtleBot3():
     def __init__(self, Rz):
         self.Rz = Rz
 
-class statusExperiment():
-    def __init__(self, status):
-        self.status = status
+class quaternion():
+    def __init__(self, Qx, Qy, Qz, Qw):
+        self.Qx = Qx
+        self.Qy = Qy
+        self.Qz = Qz
+        self.Qw = Qw
 
 ##################################################################################
 
 def viconCallback(data):
     globalCurr.Tx = data.transform.translation.x
     globalCurr.Ty = data.transform.translation.y
+
+    if abs(globalLast.Qx - data.transform.rotation.x) > LHP_FILTER_TOLERANCE or abs(globalLast.Qy - data.transform.rotation.y) > LHP_FILTER_TOLERANCE or abs(globalLast.Qz - data.transform.rotation.z) > LHP_FILTER_TOLERANCE or abs(globalLast.Qw - data.transform.rotation.w) > LHP_FILTER_TOLERANCE:
+    data.transform.rotation.x = globalLast.Qx
+    data.transform.rotation.y = globalLast.Qy
+    data.transform.rotation.z = globalLast.Qz
+    data.transform.rotation.w = globalLast.Qw
+
     psi = math.atan2(2 * (data.transform.rotation.w * data.transform.rotation.z + data.transform.rotation.x * data.transform.rotation.y), data.transform.rotation.w ** 2 + data.transform.rotation.x ** 2 - data.transform.rotation.y ** 2 - data.transform.rotation.z ** 2) + offsetRz.Rz - initRz.Rz
     while abs(psi) > math.pi:
         psi -= np.sign(psi) * 2 * math.pi
+    globalCurr.Rz = psi
 
-    if status.status == 1:
-        globalCurr.Rz = psi
-    elif status.status == 2:
-        if abs(psi - globalCurr.Rz) < LHP_FILTER_TOLERANCE:
-            globalCurr.Rz - psi
+    globalLast.Qx = data.transform.rotation.x
+    globalLast.Qy = data.transform.rotation.y
+    globalLast.Qz = data.transform.rotation.z
+    globalLast.Qw = data.transform.rotation.w
 
 ##################################################################################
 
@@ -90,9 +100,7 @@ def controlTurtleBot3(uLin, uAng):
     u.publish(twist)
 
 def calibrateTurtleBot3():
-
     rospy.wait_for_message("/vicon/TurtleBot01/TurtleBot01", TransformStamped)
-    status.status = 1
 
     # Assign starting point:
     viconP1 = Point()
@@ -116,10 +124,10 @@ def calibrateTurtleBot3():
     dx = viconP2.x - viconP1.x
     dy = viconP2.y - viconP1.y
     offsetRz.Rz = math.atan2(dy, dx)
+    status.status = 1
 
 def transitionTurtleBot3():
     rospy.wait_for_message("/vicon/TurtleBot01/TurtleBot01", TransformStamped)
-    status.status = 2
 
     while not rospy.is_shutdown():
 
@@ -146,8 +154,8 @@ if __name__=="__main__":
 
     # Create object for VICON state:
     globalCurr = stateTurtleBot3(0.0, 0.0, 0.0)
+    globalLast = quaternion(viconInit.transform.rotation.x, viconInit.transform.rotation.y, viconInit.transform.rotation.z, viconInit.transform.rotation.w)
     offsetRz = offsetTurtleBot3(0.0)
-    status = statusExperiment(1)
 
     # Initialize publishers and subscribers:
     u = rospy.Publisher("cmd_vel", Twist, queue_size=10)
