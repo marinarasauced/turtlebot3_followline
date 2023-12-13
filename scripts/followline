@@ -43,6 +43,10 @@ Calibration complete
 """
 
 MSG04 = """
+Following x-axis
+"""
+
+MSG05 = """
 Communication ended
 """
 
@@ -175,6 +179,7 @@ if __name__=="__main__":
         print(MSG03)
 
         # Transition TurtleBot3:
+        print(MSG04)
         transitionTurtleBot3()
 
         # Shut down node:
@@ -183,7 +188,7 @@ if __name__=="__main__":
     except:
 
         # Indicate the node is shut down:
-        print(MSG04)
+        print(MSG05)
 
 
 
