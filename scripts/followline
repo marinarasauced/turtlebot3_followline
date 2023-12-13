@@ -138,7 +138,7 @@ def transitionTurtleBot3():
         uLin = R_MAX_LIN_VEL * BURGER_MAX_LIN_VEL
         uAng = -K_P1 * globalCurr.Rz -K_P2 * globalCurr.Ty
         while abs(uAng) > R_MAX_ANG_VEL * BURGER_MAX_ANG_VEL:
-            uAng = -np.sign(globalCurr.Rz) * R_MAX_ANG_VEL * BURGER_MAX_ANG_VEL
+            uAng = -np.sign(uAng) * R_MAX_ANG_VEL * BURGER_MAX_ANG_VEL
         controlTurtleBot3(uLin, uAng)
 
 ##################################################################################
