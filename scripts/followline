@@ -76,10 +76,13 @@ def viconCallback(data):
     while error > math.pi:
         error -= 2 * math.pi
 
-    if status.status != 1:
+    if status.status == 0:
         globalCurr.Rz = psi
     elif error > RZ_FILTER_TOLERANCE:
-    globalCurr.Rz = psi
+        if error < RZ_FILTER_TOLERANCE:
+            globalCurr.Rz = psi
+    else:
+        globalCurr.Rz = psi
 
 ##################################################################################
 
